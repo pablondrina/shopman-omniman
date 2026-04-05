@@ -1,76 +1,65 @@
 # shopman-omniman
 
-Omnichannel order management kernel.
+Kernel de pedidos omnichannel para Django. Gerencia todo o ciclo de vida de um pedido — desde a sessão de compra até o fulfillment — com suporte a múltiplos canais (balcão, delivery, WhatsApp, marketplace).
 
 Part of the [Django Shopman](https://github.com/pablondrina/django-shopman) commerce framework.
 
-## Overview
+## Domínio
 
-**Domain:** Pedidos
-**Namespace:** `shopman.omniman`
-**Pip package:** `shopman-omniman`
+O Omniman modela o fluxo completo de pedidos:
 
-### Main Models
+- **Session** — carrinho ativo do cliente. Items, dados de entrega, pagamento. Expira automaticamente.
+- **SessionItem** — item no carrinho com SKU, quantidade, preço.
+- **Order** — pedido commitado a partir da Session. Status machine com transitions configuráveis.
+- **OrderItem** — item do pedido (snapshot imutável do momento do commit).
+- **OrderEvent** — timeline de eventos (status changes, ações do operador, sistema).
+- **Channel** — canal de venda (web, pos, whatsapp, ifood). Config JSON com cascata.
+- **Directive** — fila de tarefas pós-commit (stock.hold, notification.send, payment.capture). Retry com backoff exponencial.
+- **Fulfillment / FulfillmentItem** — entrega ou retirada vinculada ao pedido.
+- **IdempotencyKey** — proteção contra requests duplicados.
 
-Sessions, Orders, Channels, Directives, Fulfillment
+## Services
 
-## Installation
+| Service | Responsabilidade |
+|---------|-----------------|
+| `CommitService` | Session → Order. Copia dados, cria directives pós-commit. |
+| `ModifyService` | Atualiza sessão (add/remove items, update data). |
+| `WriteService` | Escrita direta em Order.data (notas internas, ajustes). |
+| `ResolveService` | Resolução de referências e lookups. |
+
+## Contribs
+
+- `omniman.contrib.refs` — Geração de referências sequenciais (ORD-001, ORD-002...) com escopo por canal.
+- `omniman.contrib.stock` — Bridge omniman↔stockman para validação de estoque no commit.
+
+## Instalação
 
 ```bash
 pip install shopman-omniman
 ```
 
-## Quick Start
-
 ```python
-# settings.py
 INSTALLED_APPS = [
     "shopman.omniman",
-    # ...
+    "shopman.omniman.contrib.refs",   # opcional: refs sequenciais
+    "shopman.omniman.contrib.stock",  # opcional: validação de estoque
 ]
 ```
 
-## Architecture
+## Signals
 
-This package is a **Core app** — it provides domain-specific models, services, and protocols with zero dependencies on other Shopman apps (except `shopman-utils`).
-
-Communication with other apps happens via `typing.Protocol` — no direct imports. The framework layer (`django-shopman`) orchestrates integration between core apps.
-
-## Conventions
-
-- **Monetary values:** `int` in centavos with `_q` suffix (e.g., `price_q = 1050` → R$ 10.50)
-- **Identifiers:** `ref` (not `code`). Exception: `Product.sku`
-- **Inter-app communication:** `typing.Protocol` + adapters, no direct imports
+- `order_changed(sender, order, event_type, actor)` — disparado em toda mudança de status.
+- `session_committed(sender, session_id, order_id)` — disparado após commit.
 
 ## Development
 
-This package is developed in the [django-shopman](https://github.com/pablondrina/django-shopman) monorepo under `packages/omniman/`.
+Desenvolvido no monorepo [django-shopman](https://github.com/pablondrina/django-shopman) em `packages/omniman/`.
 
 ```bash
-# Clone the monorepo
 git clone https://github.com/pablondrina/django-shopman.git
-cd django-shopman
-
-# Install in editable mode
-pip install -e packages/omniman
-
-# Run tests
-make test-omniman
+cd django-shopman && pip install -e packages/omniman
+make test-omniman  # ~205 testes
 ```
-
-## Related Packages
-
-| Package | Domain |
-|---------|--------|
-| [django-shopman](https://github.com/pablondrina/django-shopman) | Framework orchestrator |
-| [shopman-utils](https://github.com/pablondrina/shopman-utils) | Shared utilities |
-| [shopman-omniman](https://github.com/pablondrina/shopman-omniman) | Orders |
-| [shopman-stockman](https://github.com/pablondrina/shopman-stockman) | Inventory |
-| [shopman-craftsman](https://github.com/pablondrina/shopman-craftsman) | Production |
-| [shopman-offerman](https://github.com/pablondrina/shopman-offerman) | Catalog |
-| [shopman-guestman](https://github.com/pablondrina/shopman-guestman) | CRM |
-| [shopman-doorman](https://github.com/pablondrina/shopman-doorman) | Auth |
-| [shopman-payman](https://github.com/pablondrina/shopman-payman) | Payments |
 
 ## License
 
