@@ -15,4 +15,3 @@ db.sqlite3
 .ruff_cache/
 htmlcov/
 .coverage
-
